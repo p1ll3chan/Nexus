@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneBridge</string>
+    <string name="listener_label">PhoneBridge notifications</string>
+    <string name="tagline">Forward social/communication notifications, calls, and live GPS location to your Linux laptop over Tailscale.</string>
+
+    <string name="channel_bridge_name">Connection status</string>
+    <string name="channel_bridge_description">Shows whether PhoneBridge is connected to the laptop.</string>
+    <string name="notification_title">PhoneBridge</string>
+
+    <string name="action_stop">Stop</string>
+    <string name="action_save_connect">Save &amp; connect</string>
+    <string name="action_notif_access">Grant notification access</string>
+    <string name="notif_access_granted">Notification access granted</string>
+    <string name="action_phone_permission">Grant phone permission</string>
+    <string name="action_location_permission">Grant location permission</string>
+    <string name="location_permission_granted">Location permission granted</string>
+    <string name="action_test">Send test notification, call &amp; GPS</string>
+
+    <string name="switch_notifications">Forward notifications</string>
+    <string name="switch_social_only">Only social, messaging &amp; email apps</string>
+    <string name="switch_calls">Forward calls</string>
+    <string name="switch_location">Share GPS location &amp; battery</string>
+    <string name="switch_boot">Start on boot</string>
+
+    <string name="hint_host">Server address (Tailscale IP or hostname)</string>
+    <string name="hint_port">Port</string>
+    <string name="hint_token">Shared secret</string>
+    <string name="hint_device">This device name</string>
+    <string name="hint_location_interval">GPS update interval (seconds)</string>
+
+    <string name="state_connected">Connected to %1$s</string>
+    <string name="state_connecting">Connecting\u2026</string>
+    <string name="state_retrying">Reconnecting (attempt %1$d)\u2026</string>
+    <string name="state_retrying_detail">Reconnecting #%1$d: %2$s</string>
+    <string name="state_disconnected">Disconnected</string>
+
+    <string name="stat_connected_for"> \u2022 up %1$d min</string>
+    <string name="stats_format">Notifications %1$d (skipped %2$d) \u2022 Calls %3$d \u2022 GPS %4$d \u2022 Reconnects %5$d</string>
+
+    <string name="permission_denied">Permission denied; some features may not work.</string>
+    <string name="error_incomplete">Enter the server address and shared secret first.</string>
+    <string name="saved_connecting">Settings saved, connecting\u2026</string>
+    <string name="test_sent">Test events sent.</string>
+</resources>

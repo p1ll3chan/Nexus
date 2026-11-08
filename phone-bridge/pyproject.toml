@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phone-bridge"
+version = "0.2.0"
+description = "Bridge Android notifications, calls, and GPS location to a Linux desktop over Tailscale + WebSocket"
+requires-python = ">=3.11"
+dependencies = ["websockets>=13.0"]
+
+[project.optional-dependencies]
+dbus = ["dbus-python>=1.3.2"]
+
+[project.scripts]
+phone-bridge = "main:main"
+
+[tool.setuptools]
+py-modules = [
+    "authentication",
+    "client",
+    "config",
+    "discovery",
+    "main",
+    "notifications",
+    "protocol",
+    "server",
+    "storage",
+    "web",
+]

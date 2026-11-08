@@ -1,0 +1,21 @@
+[Unit]
+Description=PhoneBridge - Android notifications and calls to Linux
+Documentation=https://github.com/anomalyco/opencode
+After=graphical-session.target network-online.target
+Wants=network-online.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Uses the console script created by `pip install --user .` or pipx.
+# Alternatively, replace ExecStart with:
+#   ExecStart=%h/.local/share/phone-bridge/venv/bin/python %h/.local/share/phone-bridge/main.py serve
+ExecStart=%h/.local/bin/phone-bridge serve
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+# D-Bus session bus is required for native notifications.
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,36 @@
+Phone online
+     ↓
+Tailscale connected
+     ↓
+PhoneBridge sends GPS
+     ↓
+Laptop knows location ✅
+
+
+
+
+---
+
+
+PhoneBridge Android
+│
+├── NotificationListener
+├── CallMonitor
+├── ConnectionManager
+│
+└── LocationService
+      │
+      ├── GPS location
+      ├── accuracy
+      ├── timestamp
+      └── battery level
+             │
+             ▼
+          WebSocket
+             │
+             ▼
+       Python Laptop
+             │
+       ┌─────┴─────┐
+       ▼           ▼
+   SQLite DB     Map UI

@@ -1,0 +1,84 @@
+# phone-bridge configuration
+# Copy to ~/.config/phone-bridge/config.toml and edit the token.
+
+host = "0.0.0.0"
+port = 8765
+
+# Shared secret. Generate one with: phone-bridge token
+token = "change-me"
+
+# Name this laptop advertises to the phone.
+device_name = "arch-laptop"
+
+# Optional Tailscale hostname/IP of the phone. Used for status logging only.
+phone_name = "my-phone"
+
+# auto | dbus | notify-send | console | none
+notify_backend = "auto"
+notification_timeout = 8000
+notification_urgency = "normal"
+default_icon = "phone"
+
+# Only forward notifications from social media, messaging, communication, and email apps.
+only_allowed_apps = true
+allowed_apps = [
+  "whatsapp", "com.whatsapp", "com.whatsapp.w4b",
+  "telegram", "org.telegram.messenger",
+  "signal", "org.thoughtcrime.securesms",
+  "discord", "com.discord",
+  "slack", "com.slack",
+  "messages", "google messages", "sms", "com.google.android.apps.messaging",
+  "messenger", "com.facebook.orca",
+  "teams", "com.microsoft.teams",
+  "google chat", "meet", "zoom", "skype", "viber", "line", "wechat", "element", "threema",
+  "gmail", "com.google.android.gm",
+  "outlook", "com.microsoft.office.outlook",
+  "proton mail", "protonmail", "ch.protonmail.android",
+  "thunderbird", "k-9 mail", "tuta", "yahoo mail", "spark", "fairemail", "bluemail", "fastmail", "email",
+  "instagram", "com.instagram.android",
+  "threads", "com.instagram.barcelona",
+  "twitter", "x", "com.twitter.android",
+  "reddit", "com.reddit.frontpage",
+  "linkedin", "com.linkedin.android",
+  "facebook", "com.facebook.katana",
+  "snapchat", "com.snapchat.android",
+  "mastodon", "bluesky",
+  "phone", "dialer", "calls", "phonebridge"
+]
+
+# Apps that should never produce a desktop notification (case insensitive).
+ignore_apps = []
+
+# Suppress ongoing / persistent and low priority notifications.
+ignore_ongoing = true
+ignore_low_priority = true
+
+allow_calls = true
+allow_notifications = true
+allow_location = true
+
+# SQLite database path and retention window for GPS history.
+db_path = "~/.local/share/phone-bridge/locations.db"
+location_retention_days = 30
+
+# Live Map UI server settings.
+map_enabled = true
+map_host = "127.0.0.1"
+map_port = 8766
+
+# Optional allow-list of device names. Empty means any authenticated device.
+enabled_devices = []
+
+heartbeat_interval = 25.0
+heartbeat_timeout = 70.0
+log_level = "INFO"
+
+[icon_map]
+whatsapp = "whatsapp"
+telegram = "telegram"
+signal = "signal-desktop"
+discord = "discord"
+messages = "org.gnome.Messages"
+gmail = "org.gnome.Geary"
+slack = "slack"
+instagram = "instagram"
