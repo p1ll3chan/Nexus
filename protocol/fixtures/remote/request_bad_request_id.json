@@ -1,0 +1,14 @@
+{
+  "name": "request_bad_request_id",
+  "direction": "android_to_linux",
+  "expect": "invalid",
+  "error_code": "invalid_request",
+  "frame": {
+    "type": "remote.request",
+    "v": 1,
+    "request_id": "../../etc",
+    "operation": "system.status",
+    "params": {},
+    "ts": 1795440000.5
+  }
+}

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
@@ -34,9 +35,12 @@ class BridgeClient:
     config: Config
     device: str = "test-phone"
 
-    def __init__(self, config: Config, device: str = "test-phone") -> None:
+    def __init__(self, config: Config, device: str = "test-phone", credential: str = "") -> None:
         self.config = config
         self.device = device
+        self.credential = credential
+        self.capabilities: dict[str, Any] | None = None
+        self.hello_ack: dict[str, Any] | None = None
 
     @property
     def uri(self) -> str:
@@ -57,7 +61,13 @@ class BridgeClient:
             ws = await connect(self.uri, max_size=self.config.max_message_bytes)
         except OSError as exc:
             raise ClientError(f"cannot connect to {self.uri}: {exc}") from exc
-        hello = protocol.Hello(device=self.device, token=self.config.token)
+        if self.credential:
+            from remote_store import parse_credential
+
+            device_id, secret = parse_credential(self.credential)
+            hello = protocol.Hello(device=self.device, device_id=device_id, device_secret=secret)
+        else:
+            hello = protocol.Hello(device=self.device, token=self.config.token)
         await ws.send(protocol.dumps(hello.to_dict()))
         try:
             raw = await asyncio.wait_for(ws.recv(), 10)
@@ -71,6 +81,7 @@ class BridgeClient:
         if protocol.message_type(data) is not protocol.MessageType.HELLO_ACK:
             await ws.close()
             raise ClientError(f"unexpected handshake frame: {data.get('type')}")
+        self.hello_ack = data
         return ws
 
     async def close(self) -> None:
@@ -143,6 +154,83 @@ class BridgeClient:
         event = Locate()
         await self.send(event)
         return event.id
+
+    async def send_raw(self, frame: dict[str, Any] | str) -> None:
+        ws = getattr(self, "_ws", None)
+        if ws is None:
+            raise ClientError("client is not connected")
+        await ws.send(frame if isinstance(frame, str) else protocol.dumps(frame))
+
+    async def remote(
+        self,
+        operation: str,
+        params: dict[str, Any] | None = None,
+        *,
+        request_id: str = "",
+        ts: float | None = None,
+        timeout: float = 10.0,
+        extra: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Send a remote.request; return (remote.response, intermediate frames)."""
+
+        rid = request_id or secrets.token_hex(12)
+        frame: dict[str, Any] = {
+            "type": "remote.request",
+            "v": 1,
+            "request_id": rid,
+            "operation": operation,
+            "params": params or {},
+            "ts": time.time() if ts is None else ts,
+        }
+        if extra:
+            frame.update(extra)
+        await self.send_raw(frame)
+        return await self.wait_response(rid, timeout=timeout)
+
+    async def wait_response(
+        self, request_id: str, *, timeout: float = 10.0
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        ws = getattr(self, "_ws", None)
+        if ws is None:
+            raise ClientError("client is not connected")
+        seen: list[dict[str, Any]] = []
+
+        async def read() -> dict[str, Any]:
+            async for raw in ws:
+                try:
+                    data = protocol.loads(raw)
+                except ProtocolError:
+                    continue
+                kind = data.get("type")
+                if kind == "remote.capabilities":
+                    self.capabilities = data
+                    continue
+                if kind == "ping":
+                    await ws.send(protocol.dumps({"type": "pong", "timestamp": data.get("timestamp")}))
+                    continue
+                if data.get("request_id") == request_id:
+                    if kind == "remote.response":
+                        return data
+                    seen.append(data)
+            raise ClientError("connection closed before remote.response")
+
+        return await asyncio.wait_for(read(), timeout), seen
+
+    async def next_frame(self, kind: str, *, timeout: float = 5.0) -> dict[str, Any]:
+        ws = getattr(self, "_ws", None)
+        if ws is None:
+            raise ClientError("client is not connected")
+
+        async def read() -> dict[str, Any]:
+            async for raw in ws:
+                data = protocol.loads(raw)
+                if data.get("type") == "remote.capabilities":
+                    self.capabilities = data
+                if data.get("type") == kind:
+                    return data
+            raise ClientError(f"connection closed before {kind}")
+
+        return await asyncio.wait_for(read(), timeout)
 
     async def ack_loop(self) -> AsyncIterator[dict[str, Any]]:
         ws = getattr(self, "_ws", None)

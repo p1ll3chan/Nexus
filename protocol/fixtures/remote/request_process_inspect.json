@@ -1,0 +1,16 @@
+{
+  "name": "request_process_inspect",
+  "direction": "android_to_linux",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.request",
+    "v": 1,
+    "request_id": "req_0000000000000002",
+    "operation": "process.inspect",
+    "params": {
+      "pid": 1234,
+      "start_ticks": 98765
+    },
+    "ts": 1795440002.0
+  }
+}

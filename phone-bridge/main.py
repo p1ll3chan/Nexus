@@ -49,6 +49,7 @@ def _config_overrides(args: argparse.Namespace) -> dict[str, Any]:
         "map_enabled": _tri_state(getattr(args, "map", None)),
         "map_host": getattr(args, "map_host", None),
         "map_port": getattr(args, "map_port", None),
+        "remote_db_path": getattr(args, "remote_db_path", None),
     }
 
 
@@ -140,7 +141,74 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_config.add_argument("--token")
 
+    _add_remote_parser(sub)
+
     return parser
+
+
+def _add_remote_parser(sub: Any) -> None:
+    remote = sub.add_parser(
+        "remote",
+        help="Nexus Remote: pair devices, manage permissions, approvals and audit",
+    )
+    remote.add_argument("--remote-db", dest="remote_db_path", help="path to nexus.db")
+    rsub = remote.add_subparsers(dest="remote_command", required=True)
+
+    pair = rsub.add_parser("pair", help="pair a new device and print its credential once")
+    pair.add_argument("name", help="human-friendly device name, e.g. pixel-9")
+    pair.add_argument(
+        "--grant",
+        action="append",
+        default=[],
+        metavar="PERMISSION",
+        help="grant a permission at pairing time (e.g. remote.read)",
+    )
+    pair.add_argument("--json", action="store_true")
+
+    devices = rsub.add_parser("devices", help="list paired devices and their permissions")
+    devices.add_argument("--json", action="store_true")
+
+    for name, help_text in (
+        ("revoke", "revoke a device: disconnects it and removes all grants"),
+        ("rotate", "issue a new secret for a device (old secret stops working)"),
+    ):
+        cmd = rsub.add_parser(name, help=help_text)
+        cmd.add_argument("device_id")
+    rsub.add_parser("revoke-all", help="panic button: revoke every paired device")
+
+    for name, help_text in (
+        ("grant", "grant a permission to a device"),
+        ("ungrant", "remove a permission from a device"),
+    ):
+        cmd = rsub.add_parser(name, help=help_text)
+        cmd.add_argument("device_id")
+        cmd.add_argument("permission", help="remote.read | remote.execute")
+
+    ops = rsub.add_parser("ops", help="list the fixed operation registry")
+    ops.add_argument("--json", action="store_true")
+
+    run = rsub.add_parser("run", help="run a registered read operation locally (no network)")
+    run.add_argument("operation")
+    run.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="operation parameter; ints/bools are parsed as JSON",
+    )
+
+    audit = rsub.add_parser("audit", help="show remote audit metadata")
+    audit.add_argument("--limit", type=int, default=30)
+    audit.add_argument("--device", dest="audit_device")
+    audit.add_argument("--json", action="store_true")
+
+    rsub.add_parser("approvals", help="list pending approval requests")
+    for name in ("approve", "deny"):
+        cmd = rsub.add_parser(name, help=f"{name} a pending approval")
+        cmd.add_argument("approval_id")
+
+    migrate = rsub.add_parser("migrate", help="apply nexus.db schema migrations")
+    migrate.add_argument("--backup", metavar="PATH", help="write a backup copy first")
 
 
 async def _run_serve(config: Config) -> int:
@@ -334,6 +402,171 @@ async def _run_status(config: Config) -> int:
     return 0
 
 
+def _parse_param(raw: str) -> tuple[str, Any]:
+    if "=" not in raw:
+        raise ValueError(f"--param must be KEY=VALUE, got {raw!r}")
+    key, value = raw.split("=", 1)
+    try:
+        parsed: Any = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = value
+    return key.strip(), parsed
+
+
+def _fmt_ts(ts: float | None) -> str:
+    if not ts:
+        return "-"
+    return dt.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _run_remote(config: Config, args: argparse.Namespace) -> int:
+    from remote_registry import OperationContext, ParamError, OperationError, default_registry
+    from remote_store import RemoteStore, StoreError
+
+    cmd = args.remote_command
+    registry = default_registry()
+
+    if cmd == "ops":
+        ops = [op.describe() for op in registry.all()]
+        if args.json:
+            print(json.dumps(ops, indent=2))
+            return 0
+        for op in ops:
+            approval = "approval" if op["requires_approval"] else "no approval"
+            print(f"{op['id']:<18} {op['permission']:<15} {op['risk']}  {approval:<11} {op['description']}")
+            for pname, spec in op["params"].items():
+                extra = {k: v for k, v in spec.items() if k not in {"type", "required"}}
+                req = "required" if spec["required"] else "optional"
+                print(f"{'':20}- {pname} ({spec['type']}, {req}) {extra if extra else ''}")
+        return 0
+
+    if cmd == "run":
+        try:
+            op = registry.get(args.operation)
+            params = op.validate_params(dict(_parse_param(p) for p in args.param))
+            if op.requires_approval:
+                print("operations that require approval cannot be run from this command", file=sys.stderr)
+                return 2
+            result = op.handler(
+                params,
+                OperationContext(
+                    device_name=config.device_name,
+                    disk_paths=tuple(config.remote_disks.items()),
+                    max_output_bytes=op.max_output_bytes,
+                ),
+            )
+        except (ParamError, OperationError, LookupError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2))
+        return 0
+
+    store = RemoteStore(config.remote_db_path)
+    try:
+        if cmd == "pair":
+            record, credential = store.pair(args.name, tuple(args.grant))
+            perms = sorted(store.permissions(record.device_id))
+            if args.json:
+                print(json.dumps({"device_id": record.device_id, "credential": credential, "permissions": perms}))
+                return 0
+            print(f"paired device:  {record.name}")
+            print(f"device id:      {record.device_id}")
+            print(f"permissions:    {', '.join(perms) or '(none - grant with `phone-bridge remote grant`)'}")
+            print()
+            print("Device credential (shown ONCE - paste it into the Android app, Settings > Nexus credential):")
+            print()
+            print(f"    {credential}")
+            print()
+            print("Anyone with this credential can act as this device. Revoke with:")
+            print(f"    phone-bridge remote revoke {record.device_id}")
+            return 0
+        if cmd == "devices":
+            rows = []
+            for rec in store.devices():
+                row = rec.to_public_dict()
+                row["permissions"] = sorted(store.permissions(rec.device_id))
+                rows.append(row)
+            if args.json:
+                print(json.dumps(rows, indent=2))
+                return 0
+            if not rows:
+                print("no paired devices; run `phone-bridge remote pair <name>`")
+                return 0
+            for row in rows:
+                state = "REVOKED" if row["revoked_at"] else "active"
+                print(
+                    f"{row['device_id']}  {row['name']:<20} {state:<8} "
+                    f"perms={','.join(row['permissions']) or '-'}  last_seen={_fmt_ts(row['last_seen_at'])}"
+                )
+            return 0
+        if cmd == "revoke":
+            if store.revoke(args.device_id):
+                print(f"revoked {args.device_id}; active sessions close within 5 seconds")
+                return 0
+            print(f"no active device {args.device_id}", file=sys.stderr)
+            return 1
+        if cmd == "revoke-all":
+            count = store.revoke_all()
+            print(f"revoked {count} device(s)")
+            return 0
+        if cmd == "rotate":
+            credential = store.rotate(args.device_id)
+            print("New credential (shown ONCE; the old one no longer works):")
+            print(f"    {credential}")
+            return 0
+        if cmd == "grant":
+            store.grant(args.device_id, args.permission)
+            print(f"granted {args.permission} to {args.device_id}")
+            return 0
+        if cmd == "ungrant":
+            removed = store.ungrant(args.device_id, args.permission)
+            print(("removed " if removed else "not granted: ") + f"{args.permission} on {args.device_id}")
+            return 0 if removed else 1
+        if cmd == "audit":
+            rows = store.audit(limit=args.limit, device_id=args.audit_device)
+            if args.json:
+                print(json.dumps(rows, indent=2))
+                return 0
+            if not rows:
+                print("no remote audit records")
+            for row in rows:
+                err = f" error={row['error_code']}" if row["error_code"] else ""
+                trunc = " truncated" if row["truncated"] else ""
+                print(
+                    f"{_fmt_ts(row['finished_at'])}  {row['device_id']:<20} {row['operation']:<16} "
+                    f"{row['decision']:<8} {row['status']:<9} approval={row['approval_state']}"
+                    f"{err}{trunc} ({row['duration_ms'] if row['duration_ms'] is not None else '-'} ms)"
+                )
+            return 0
+        if cmd == "approvals":
+            pending = store.pending_approvals()
+            if not pending:
+                print("no pending approvals")
+            for rec in pending:
+                device = store.device(rec.device_id)
+                name = device.name if device else rec.device_id
+                remaining = max(0, int(rec.expires_at - dt.datetime.now().timestamp()))
+                print(f"{rec.approval_id}  {name:<20} {rec.operation:<16} expires in {remaining}s")
+            return 0
+        if cmd in {"approve", "deny"}:
+            state = store.decide(args.approval_id, approve=cmd == "approve")
+            print(f"{args.approval_id}: {state}")
+            expected = "approved" if cmd == "approve" else "denied"
+            return 0 if state == expected else 1
+        if cmd == "migrate":
+            if args.backup:
+                print(f"backup written to {store.backup(args.backup)}")
+            version = store.migrate()
+            print(f"nexus.db schema version {version} ({store.path})")
+            return 0
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        store.close()
+    return 2
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -371,6 +604,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if command == "token":
             print(config_module.generate_token())
             return 0
+        if command == "remote":
+            return _run_remote(config, args)
         if command == "init-config":
             token = args.token or config_module.generate_token()
             path = write_default_config(args.path, Config(token=token))

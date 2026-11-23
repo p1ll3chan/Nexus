@@ -383,6 +383,12 @@ MAP_HTML = """<!DOCTYPE html>
   const gpxLink = document.getElementById('gpxLink');
   const geojsonLink = document.getElementById('geojsonLink');
 
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
   function fmtTime(ts) {
     if (!ts) return '—';
     const d = new Date(ts * 1000);
@@ -441,7 +447,7 @@ MAP_HTML = """<!DOCTYPE html>
         fillOpacity: 0.7,
         weight: 1
       }).bindPopup(
-        `<b>${pt.device}</b><br/>${pt.latitude.toFixed(6)}, ${pt.longitude.toFixed(6)}<br/>` +
+        `<b>${esc(pt.device)}</b><br/>${pt.latitude.toFixed(6)}, ${pt.longitude.toFixed(6)}<br/>` +
         `Accuracy: ±${(pt.accuracy || 0).toFixed(1)}m<br/>Battery: ${pt.battery != null ? pt.battery + '%' : 'n/a'}<br/>` +
         `${new Date(pt.timestamp * 1000).toLocaleString()}`
       ).addTo(pointLayer);
@@ -462,7 +468,7 @@ MAP_HTML = """<!DOCTYPE html>
       latestMarker.setLatLng(pos);
     }
     latestMarker.bindPopup(
-      `<b>${focus.device} (Latest)</b><br/>${focus.latitude.toFixed(6)}, ${focus.longitude.toFixed(6)}<br/>` +
+      `<b>${esc(focus.device)} (Latest)</b><br/>${focus.latitude.toFixed(6)}, ${focus.longitude.toFixed(6)}<br/>` +
       `Accuracy: ±${(focus.accuracy || 0).toFixed(1)}m • Battery: ${focus.battery != null ? focus.battery + '%' : 'n/a'}`
     );
 
@@ -501,7 +507,7 @@ MAP_HTML = """<!DOCTYPE html>
       row.innerHTML = `
         <div>
           <div class="history-coords">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</div>
-          <div class="history-meta">${pt.device} • ±${(pt.accuracy || 0).toFixed(1)}m • ${fmtTime(pt.timestamp)}</div>
+          <div class="history-meta">${esc(pt.device)} • ±${(pt.accuracy || 0).toFixed(1)}m • ${fmtTime(pt.timestamp)}</div>
         </div>
         <span class="badge">${batt}</span>
       `;
@@ -707,7 +713,7 @@ class MapWebServer:
                     "application/gpx+xml; charset=utf-8",
                     extra_headers={"Content-Disposition": 'attachment; filename="phone-track.gpx"'},
                 )
-            elif path == "/api/locate" and method in {"POST", "GET"}:
+            elif path == "/api/locate" and method == "POST":
                 device = (query.get("device") or [""])[0].strip() or None
                 requested = 0
                 if self.bridge is not None:

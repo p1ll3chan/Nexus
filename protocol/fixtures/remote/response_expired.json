@@ -1,0 +1,19 @@
+{
+  "name": "response_expired",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.response",
+    "v": 1,
+    "request_id": "a1b2c3d4e5f60718",
+    "operation": "system.status",
+    "status": "expired",
+    "truncated": false,
+    "started_at": null,
+    "finished_at": 1795440000.6,
+    "error": {
+      "code": "expired",
+      "message": "request timestamp outside the accepted window (check phone clock)"
+    }
+  }
+}

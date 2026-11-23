@@ -48,6 +48,15 @@ class Authenticator:
             raise AuthError("invalid authentication token")
         return True
 
+    def check_rate(self, source: str) -> None:
+        """Raise AuthError if ``source`` exceeded the failure budget."""
+
+        if not self._is_allowed(source):
+            raise AuthError("too many failed authentication attempts")
+
+    def record_result(self, source: str, success: bool, device: str = "") -> None:
+        self._record(source, success, device)
+
     def is_locked(self, source: str) -> bool:
         return not self._is_allowed(source)
 
