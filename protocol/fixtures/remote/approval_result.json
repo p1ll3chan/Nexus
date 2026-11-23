@@ -1,0 +1,12 @@
+{
+  "name": "approval_result",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.approval_result",
+    "v": 1,
+    "request_id": "a1b2c3d4e5f60718",
+    "approval_id": "apr_0123456789abcdef",
+    "outcome": "denied"
+  }
+}

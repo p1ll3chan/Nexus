@@ -9,6 +9,7 @@ Configuration is resolved in the following order (later wins):
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import secrets
@@ -23,6 +24,10 @@ DEFAULT_CONFIG_PATHS = (
 )
 
 DEFAULT_DB_PATH = str(Path.home() / ".local" / "share" / "phone-bridge" / "locations.db")
+DEFAULT_REMOTE_DB_PATH = str(Path.home() / ".local" / "share" / "phone-bridge" / "nexus.db")
+
+# Shipped placeholder tokens that must never authenticate (Day 3/4 finding G2).
+PLACEHOLDER_TOKENS = frozenset({"change-me", "changeme", "change_me", "your-token-here", "<token>"})
 
 ENV_PREFIX = "PHONE_BRIDGE_"
 
@@ -210,6 +215,19 @@ class Config:
     max_message_bytes: int = 262_144
     log_level: str = "INFO"
 
+    # Nexus Remote
+    remote_enabled: bool = True
+    remote_db_path: str = DEFAULT_REMOTE_DB_PATH
+    remote_disks: dict[str, str] = field(default_factory=lambda: {"root": "/", "home": "~"})
+    remote_session_max_age: float = 43_200.0
+    remote_approval_ttl: float = 60.0
+    audit_retention_days: int = 90
+    # Legacy shared-token auth keeps notifications/calls/GPS working for unpaired
+    # phones.  It can never be used for remote.* operations.  Set an ISO date
+    # (YYYY-MM-DD) in legacy_token_expires to make it time-limited.
+    legacy_token_auth: bool = True
+    legacy_token_expires: str = ""
+
     @property
     def uri(self) -> str:
         return f"ws://{self.host}:{self.port}"
@@ -224,6 +242,14 @@ class Config:
         if data.get("token"):
             data["token"] = "****"
         return data
+
+    def legacy_token_allowed(self, today: "dt.date | None" = None) -> bool:
+        if not self.legacy_token_auth:
+            return False
+        if not self.legacy_token_expires:
+            return True
+        today = today or dt.date.today()
+        return today <= dt.date.fromisoformat(self.legacy_token_expires)
 
     def is_app_ignored(self, app: str, package: str = "") -> bool:
         lowered = {a.strip().lower() for a in self.ignore_apps if a.strip()}
@@ -270,6 +296,14 @@ _TOML_KEYS = {
     "heartbeat_timeout",
     "max_message_bytes",
     "log_level",
+    "remote_enabled",
+    "remote_db_path",
+    "remote_disks",
+    "remote_session_max_age",
+    "remote_approval_ttl",
+    "audit_retention_days",
+    "legacy_token_auth",
+    "legacy_token_expires",
 }
 
 
@@ -299,9 +333,16 @@ def _coerce(name: str, value: Any) -> Any:
         "max_message_bytes",
         "location_retention_days",
         "map_port",
+        "audit_retention_days",
     }:
         return int(value)
-    if name in {"discovery_interval", "heartbeat_interval", "heartbeat_timeout"}:
+    if name in {
+        "discovery_interval",
+        "heartbeat_interval",
+        "heartbeat_timeout",
+        "remote_session_max_age",
+        "remote_approval_ttl",
+    }:
         return float(value)
     if name in {
         "only_allowed_apps",
@@ -311,6 +352,8 @@ def _coerce(name: str, value: Any) -> Any:
         "allow_notifications",
         "allow_location",
         "map_enabled",
+        "remote_enabled",
+        "legacy_token_auth",
     }:
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
@@ -319,8 +362,12 @@ def _coerce(name: str, value: Any) -> Any:
         if isinstance(value, str):
             return tuple(part.strip() for part in value.split(",") if part.strip())
         return tuple(value)
-    if name == "icon_map":
-        return {str(k): str(v) for k, v in dict(value).items()}
+    if name in {"icon_map", "remote_disks"}:
+        if isinstance(value, str):
+            value = dict(
+                part.split("=", 1) for part in value.split(",") if "=" in part
+            )
+        return {str(k).strip(): str(v).strip() for k, v in dict(value).items()}
     return value
 
 
@@ -377,7 +424,17 @@ def load_config(
     if unknown:
         raise ConfigError(f"unknown configuration keys: {', '.join(sorted(unknown))}")
 
+    for dict_key in ("icon_map", "remote_disks"):
+        if dict_key in data:
+            data[dict_key] = _coerce(dict_key, data[dict_key])
+
     config = Config(**data)
+
+    if config.token.strip().lower() in PLACEHOLDER_TOKENS:
+        raise ConfigError(
+            "token is still the shipped placeholder; generate one with `phone-bridge token` "
+            "or pair devices with `phone-bridge remote pair`"
+        )
 
     if not config.token:
         config = replace(config, token=generate_token())
@@ -393,6 +450,19 @@ def load_config(
 
     if config.notification_urgency not in {"low", "normal", "critical"}:
         raise ConfigError(f"invalid notification_urgency: {config.notification_urgency}")
+
+    if config.legacy_token_expires:
+        try:
+            dt.date.fromisoformat(config.legacy_token_expires)
+        except ValueError as exc:
+            raise ConfigError("legacy_token_expires must be YYYY-MM-DD") from exc
+
+    for label in config.remote_disks:
+        if not label.replace("_", "").replace("-", "").isalnum() or len(label) > 32:
+            raise ConfigError(f"invalid remote_disks label: {label!r}")
+
+    if not 10.0 <= config.remote_approval_ttl <= 600.0:
+        raise ConfigError("remote_approval_ttl must be between 10 and 600 seconds")
 
     return config
 
@@ -439,6 +509,19 @@ def write_default_config(path: str | os.PathLike[str], config: Config | None = N
         f"heartbeat_timeout = {config.heartbeat_timeout}",
         f'log_level = "{config.log_level}"',
         "",
+        "# Nexus Remote (read-only Linux diagnostics for paired devices)",
+        f"remote_enabled = {str(config.remote_enabled).lower()}",
+        f'remote_db_path = "{config.remote_db_path}"',
+        f"legacy_token_auth = {str(config.legacy_token_auth).lower()}",
+        f'legacy_token_expires = "{config.legacy_token_expires}"',
+        f"audit_retention_days = {config.audit_retention_days}",
+        "",
+        "[remote_disks]",
+        *[f'{k} = "{v}"' for k, v in config.remote_disks.items()],
+        "",
     ]
-    target.write_text("\n".join(lines), encoding="utf-8")
+    fd = os.open(target, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    os.chmod(target, 0o600)
     return target

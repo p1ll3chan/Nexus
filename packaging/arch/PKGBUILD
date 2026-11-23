@@ -1,0 +1,46 @@
+# Maintainer: p1ll3chan
+# Arch/Manjaro package for the Nexus Linux agent (phone-bridge).
+# Build:  makepkg -si          (from this directory)
+# Then, as your normal user:
+#   phone-bridge init-config && systemctl --user enable --now phone-bridge
+pkgname=nexus-phone-bridge
+_tag=0.3.0a1
+pkgver=0.3.0a1
+pkgrel=1
+pkgdesc="Nexus: Android notifications, calls, GPS and read-only remote Linux diagnostics over Tailscale"
+arch=('any')
+url="https://github.com/p1ll3chan/Nexus"
+license=('Apache-2.0')
+depends=('python>=3.11' 'python-websockets')
+optdepends=('python-dbus: native desktop notifications'
+            'libnotify: notify-send fallback for desktop notifications'
+            'tailscale: private network between phone and computer')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+provides=('phone-bridge')
+conflicts=('phone-bridge')
+source=("Nexus-${_tag}.tar.gz::${url}/archive/refs/tags/v${_tag}.tar.gz")
+# Replace SKIP with the real checksum when the v${_tag} tag is published.
+sha256sums=('SKIP')
+
+build() {
+  cd "Nexus-${_tag}/phone-bridge"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "Nexus-${_tag}/phone-bridge"
+  python -m unittest discover -s tests -t .
+}
+
+package() {
+  cd "Nexus-${_tag}"
+  python -m installer --destdir="$pkgdir" phone-bridge/dist/*.whl
+  install -dm755 "$pkgdir/usr/lib/systemd/user"
+  sed "s|@EXEC@|/usr/bin/phone-bridge|" phone-bridge/systemd/phone-bridge.service \
+    > "$pkgdir/usr/lib/systemd/user/phone-bridge.service"
+  chmod 644 "$pkgdir/usr/lib/systemd/user/phone-bridge.service"
+  install -Dm644 phone-bridge/config.example.toml "$pkgdir/usr/share/doc/$pkgname/config.example.toml"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+}

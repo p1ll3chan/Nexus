@@ -2,6 +2,7 @@ package com.phonebridge.app.bridge
 
 import android.util.Log
 import com.phonebridge.app.data.BridgeSettings
+import com.phonebridge.app.remote.RemoteRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,6 +68,7 @@ class ConnectionManager(
         reconnectJob?.cancel()
         reconnectJob = null
         open.set(false)
+        RemoteRuntime.detach("bridge stopped")
         webSocket?.close(NORMAL_CLOSURE, "client shutting down")
         webSocket = null
         synchronized(pendingLock) { pending.clear() }
@@ -107,6 +109,7 @@ class ConnectionManager(
     }
 
     private fun scheduleReconnect(reason: String) {
+        RemoteRuntime.detach(reason)
         if (!running.get()) return
         open.set(false)
         attempt += 1
@@ -135,7 +138,9 @@ class ConnectionManager(
 
         override fun onOpen(webSocket: WebSocket, response: Response) {
             Log.i(TAG, "connected to ${settings.webSocketUrl()}")
-            webSocket.send(OutboundEvent.Hello(settings.deviceName, settings.token).encode())
+            webSocket.send(
+                OutboundEvent.Hello(settings.deviceName, settings.token, settings.credential()).encode()
+            )
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -147,7 +152,10 @@ class ConnectionManager(
                     BridgeRuntime.updateStats {
                         it.copy(connectedSince = System.currentTimeMillis(), lastError = "")
                     }
-                    Log.i(TAG, "authenticated with ${frame.server} (protocol v${frame.version})")
+                    Log.i(TAG, "authenticated with ${frame.server} (protocol v${frame.version}, auth=${frame.auth})")
+                    // Remote frames bypass the offline queue: they are only ever
+                    // sent on this live, authenticated socket.
+                    RemoteRuntime.attach { text -> open.get() && webSocket.send(text) }
                     flushPending(webSocket)
                 }
 
@@ -171,11 +179,15 @@ class ConnectionManager(
                 is InboundFrame.Error -> {
                     Log.e(TAG, "server error ${frame.code}: ${frame.message}")
                     BridgeRuntime.updateStats { it.copy(lastError = frame.message) }
-                    if (frame.code == "auth_failed" || frame.code == "device_not_allowed") {
+                    if (frame.code == "auth_failed" || frame.code == "device_not_allowed" ||
+                        frame.code == "legacy_auth_disabled"
+                    ) {
                         // Avoid a hot retry loop on a configuration problem.
                         attempt = maxOf(attempt, 4)
                     }
                 }
+
+                is InboundFrame.Remote -> RemoteRuntime.onFrame(frame.raw)
 
                 is InboundFrame.Unknown -> Log.d(TAG, "ignoring frame: ${frame.type}")
             }
@@ -196,6 +208,7 @@ class ConnectionManager(
                 scheduleReconnect(t.message ?: "connection failure")
             } else {
                 open.set(false)
+                RemoteRuntime.detach("connection failure")
                 BridgeRuntime.updateState(ConnectionState.Disconnected)
             }
         }

@@ -1,0 +1,16 @@
+{
+  "name": "request_params_not_object",
+  "direction": "android_to_linux",
+  "expect": "invalid",
+  "error_code": "invalid_request",
+  "frame": {
+    "type": "remote.request",
+    "v": 1,
+    "request_id": "a1b2c3d4e5f60718",
+    "operation": "process.list",
+    "params": [
+      "--all"
+    ],
+    "ts": 1795440000.5
+  }
+}

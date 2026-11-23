@@ -28,11 +28,18 @@ from protocol import (
     Pong,
     ProtocolError,
 )
+from remote_dispatcher import RemoteDispatcher, RemotePrincipal
+from remote_protocol import is_remote_type
+from remote_registry import OperationContext, OperationRegistry, default_registry
+from remote_store import RemoteStore, hash_secret
 from storage import LocationRecord, LocationStore
 
 log = logging.getLogger("phone-bridge.server")
 
 HELLO_TIMEOUT = 10.0
+REVOCATION_SWEEP_SECONDS = 5.0
+CLOSE_REVOKED = 4001
+CLOSE_SESSION_EXPIRED = 4002
 
 
 @dataclass
@@ -47,6 +54,8 @@ class ClientSession:
     locations: int = 0
     last_location: LocationRecord | None = None
     pong: asyncio.Event = field(default_factory=asyncio.Event)
+    principal: RemotePrincipal | None = None
+    remote_tasks: set[asyncio.Task[Any]] = field(default_factory=set)
 
     @property
     def uptime(self) -> float:
@@ -60,6 +69,7 @@ class ClientSession:
             "last_seen": self.last_seen,
             "uptime": round(self.uptime, 1),
             "platform": self.platform,
+            "auth": "device" if self.principal else "token",
             "notifications": self.notifications,
             "calls": self.calls,
             "locations": self.locations,
@@ -75,6 +85,9 @@ class BridgeServer:
         notifier: NotificationService | None = None,
         discovery: TailscaleDiscovery | None = None,
         store: LocationStore | None = None,
+        remote_store: RemoteStore | None = None,
+        registry: OperationRegistry | None = None,
+        proc_root: str = "/proc",
     ) -> None:
         self.config = config
         self.authenticator = Authenticator(config.token)
@@ -93,6 +106,27 @@ class BridgeServer:
         self.discovery = discovery or TailscaleDiscovery(config.tailscale_command)
         self.store = store or LocationStore(config.db_path)
         self._owns_store = store is None
+        self.remote_store: RemoteStore | None = None
+        self.dispatcher: RemoteDispatcher | None = None
+        self._owns_remote_store = False
+        if config.remote_enabled or remote_store is not None:
+            self.remote_store = remote_store or RemoteStore(config.remote_db_path)
+            self._owns_remote_store = remote_store is None
+        if config.remote_enabled and self.remote_store is not None:
+            from remote_dispatcher import DispatcherLimits
+
+            self.dispatcher = RemoteDispatcher(
+                registry or default_registry(),
+                self.remote_store,
+                OperationContext(
+                    device_name=config.device_name,
+                    disk_paths=tuple(config.remote_disks.items()),
+                    proc_root=proc_root,
+                ),
+                limits=DispatcherLimits(approval_ttl=config.remote_approval_ttl),
+                on_approval_needed=self._prompt_approval,
+            )
+        self._revocation_task: asyncio.Task[None] | None = None
         self.sessions: dict[ServerConnection, ClientSession] = {}
         self._listeners: set[asyncio.Queue[dict[str, Any]]] = set()
         self._server: Server | None = None
@@ -100,6 +134,15 @@ class BridgeServer:
         self._stopping = asyncio.Event()
         self.received = 0
         self.locations_received = 0
+
+    @property
+    def port(self) -> int:
+        """Actual bound port (useful when configured with port 0)."""
+
+        if self._server is not None:
+            for sock in self._server.sockets:
+                return int(sock.getsockname()[1])
+        return self.config.port
 
     @property
     def client_count(self) -> int:
@@ -144,6 +187,11 @@ class BridgeServer:
                 return
             session.last_location = self.store.latest(session.device)
             self.sessions[websocket] = session
+            if self.dispatcher is not None:
+                await self._send(
+                    websocket,
+                    self.dispatcher.capabilities(session.principal, self.config.device_name),
+                )
             log.info("device connected: %s (%s)", session.device, address)
             self._broadcast(
                 {
@@ -165,6 +213,8 @@ class BridgeServer:
             log.exception("unhandled error for %s", session.device if session else address)
         finally:
             if session is not None:
+                for task in list(session.remote_tasks):
+                    task.cancel()
                 self.sessions.pop(websocket, None)
                 self._broadcast(
                     {
@@ -206,8 +256,22 @@ class BridgeServer:
             await self._send(websocket, protocol.error("device_not_allowed", "device not allowed"))
             return None
 
+        principal: RemotePrincipal | None = None
         try:
-            self.authenticator.verify(hello.token, source=address, device=hello.device)
+            if hello.uses_device_credential:
+                principal = self._authenticate_device(hello, address)
+            else:
+                if not self.config.legacy_token_allowed():
+                    log.warning("legacy token auth disabled; rejected %s from %s", hello.device, address)
+                    await self._send(
+                        websocket,
+                        protocol.error(
+                            "legacy_auth_disabled",
+                            "shared-token login is disabled; pair this device",
+                        ),
+                    )
+                    return None
+                self.authenticator.verify(hello.token, source=address, device=hello.device)
         except AuthError as exc:
             log.warning("authentication failed for %s from %s: %s", hello.device, address, exc)
             await self._send(websocket, protocol.error("auth_failed", "authentication failed"))
@@ -215,12 +279,39 @@ class BridgeServer:
 
         await self._send(
             websocket,
-            protocol.hello_ack(self.config.device_name, protocol.PROTOCOL_VERSION),
+            protocol.hello_ack(
+                self.config.device_name,
+                protocol.PROTOCOL_VERSION,
+                auth="device" if principal else "token",
+                device_id=principal.device_id if principal else "",
+            ),
         )
+        if principal is not None:
+            log.info("device %s authenticated as %s", hello.device, principal.device_id)
         return ClientSession(
             device=hello.device,
             address=address,
             platform=hello.platform,
+            principal=principal,
+        )
+
+    def _authenticate_device(self, hello: Hello, address: str) -> RemotePrincipal:
+        """Verify a per-device credential.  Never falls back to the shared token."""
+
+        self.authenticator.check_rate(address)
+        record = (
+            self.remote_store.authenticate(hello.device_id, hello.device_secret)
+            if self.remote_store is not None
+            else None
+        )
+        self.authenticator.record_result(address, record is not None, hello.device)
+        if record is None:
+            raise AuthError("invalid, unknown or revoked device credential")
+        self.remote_store.touch(record.device_id)  # type: ignore[union-attr]
+        return RemotePrincipal(
+            device_id=record.device_id,
+            name=record.name,
+            secret_hash=hash_secret(hello.device_secret),
         )
 
     async def _read_loop(self, websocket: ServerConnection, session: ClientSession) -> None:
@@ -228,6 +319,9 @@ class BridgeServer:
             session.last_seen = time.time()
             try:
                 data = protocol.loads(raw)
+                if is_remote_type(data.get("type")):
+                    self._dispatch_remote(websocket, session, data, len(raw))
+                    continue
                 event = protocol.parse_event(data)
             except ProtocolError as exc:
                 log.warning("protocol error from %s: %s", session.device, exc)
@@ -250,6 +344,89 @@ class BridgeServer:
                     websocket,
                     protocol.ack(event.id, ok=count > 0, detail=f"requested={count}"),
                 )
+
+    def _dispatch_remote(
+        self,
+        websocket: ServerConnection,
+        session: ClientSession,
+        data: dict[str, Any],
+        raw_size: int,
+    ) -> None:
+        if self.dispatcher is None:
+            rid = data.get("request_id") if isinstance(data.get("request_id"), str) else ""
+            asyncio.create_task(
+                self._send(
+                    websocket,
+                    {
+                        "type": "remote.response",
+                        "v": 1,
+                        "request_id": rid[:64],
+                        "status": "rejected",
+                        "error": {"code": "remote_disabled", "message": "Nexus Remote is disabled"},
+                    },
+                )
+            )
+            return
+
+        async def send(frame: dict[str, Any]) -> bool:
+            return await self._send(websocket, frame)
+
+        async def on_revoked() -> None:
+            await websocket.close(code=CLOSE_REVOKED, reason="device revoked")
+
+        task = asyncio.create_task(
+            self.dispatcher.handle(data, raw_size, session.principal, send, on_revoked)
+        )
+        session.remote_tasks.add(task)
+        task.add_done_callback(session.remote_tasks.discard)
+        task.add_done_callback(self._log_task_error)
+
+    @staticmethod
+    def _log_task_error(task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None and not isinstance(exc, websockets.ConnectionClosed):
+            log.error("remote request task failed: %r", exc)
+
+    async def _prompt_approval(self, record: Any, principal: RemotePrincipal) -> None:
+        await self.notifier.notify(
+            app="Nexus Remote",
+            title="Approval required",
+            text=(
+                f"{principal.name} requests {record.operation}. "
+                f"Run: phone-bridge remote approve {record.approval_id}"
+            ),
+            urgency="critical",
+            icon=self.config.app_icon,
+        )
+
+    async def _revocation_loop(self) -> None:
+        """Close sessions whose device was revoked/rotated or exceeded max age."""
+
+        while not self._stopping.is_set():
+            await asyncio.sleep(REVOCATION_SWEEP_SECONDS)
+            if self.remote_store is None:
+                continue
+            for websocket, session in list(self.sessions.items()):
+                principal = session.principal
+                if principal is None:
+                    continue
+                try:
+                    valid = await asyncio.to_thread(
+                        self.remote_store.session_valid, principal.device_id, principal.secret_hash
+                    )
+                except Exception:  # pragma: no cover
+                    log.exception("revocation check failed")
+                    continue
+                if not valid:
+                    log.warning("closing session for revoked/rotated device %s", principal.device_id)
+                    with contextlib.suppress(Exception):
+                        await websocket.close(code=CLOSE_REVOKED, reason="device revoked")
+                elif time.time() - principal.authenticated_at > self.config.remote_session_max_age:
+                    log.info("session max age reached for %s", principal.device_id)
+                    with contextlib.suppress(Exception):
+                        await websocket.close(code=CLOSE_SESSION_EXPIRED, reason="session expired")
 
     async def _handle_notification(
         self,
@@ -412,6 +589,18 @@ class BridgeServer:
             ping_interval=None,
         )
         self._watchdog = asyncio.create_task(self._watchdog_loop())
+        if self.remote_store is not None:
+            pruned = self.remote_store.prune_audit(self.config.audit_retention_days)
+            if pruned:
+                log.info("pruned %d old remote audit rows", pruned)
+            self._revocation_task = asyncio.create_task(self._revocation_loop())
+        if self.config.host in {"0.0.0.0", "::", ""}:
+            log.warning(
+                "listening on all interfaces (%s); set host to your Tailscale IP to limit exposure",
+                self.config.host,
+            )
+        if self.config.legacy_token_allowed():
+            log.info("legacy shared-token login enabled (notifications/calls/GPS only, never remote)")
         log.info(
             "phone-bridge listening on %s:%s (backend=%s)",
             self.config.host,
@@ -429,10 +618,11 @@ class BridgeServer:
 
     async def stop(self) -> None:
         self._stopping.set()
-        if self._watchdog is not None:
-            self._watchdog.cancel()
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await self._watchdog
+        for task in (self._watchdog, self._revocation_task):
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await task
         for websocket in list(self.sessions):
             await websocket.close(code=1001, reason="server shutting down")
         if self._server is not None:
@@ -442,6 +632,8 @@ class BridgeServer:
         await self.notifier.close()
         if self._owns_store:
             self.store.close()
+        if self._owns_remote_store and self.remote_store is not None:
+            self.remote_store.close()
         log.info("phone-bridge stopped")
 
     @staticmethod

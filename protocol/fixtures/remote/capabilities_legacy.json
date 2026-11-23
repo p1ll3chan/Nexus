@@ -1,0 +1,15 @@
+{
+  "name": "capabilities_legacy",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.capabilities",
+    "v": 1,
+    "available": false,
+    "server": "arch-laptop",
+    "device_id": "",
+    "permissions": [],
+    "operations": [],
+    "reason": "legacy_auth: pair this device with `phone-bridge remote pair` to use Remote"
+  }
+}

@@ -1,21 +1,35 @@
 [Unit]
-Description=PhoneBridge - Android notifications and calls to Linux
-Documentation=https://github.com/anomalyco/opencode
+Description=Nexus (phone-bridge): Android notifications, calls, GPS and read-only remote diagnostics
+Documentation=file://%h/.local/share/phone-bridge/README.md
 After=graphical-session.target network-online.target
 Wants=network-online.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-# Uses the console script created by `pip install --user .` or pipx.
-# Alternatively, replace ExecStart with:
-#   ExecStart=%h/.local/share/phone-bridge/venv/bin/python %h/.local/share/phone-bridge/main.py serve
-ExecStart=%h/.local/bin/phone-bridge serve
+# @EXEC@ is replaced by scripts/install.sh with the venv entry point.
+ExecStart=@EXEC@ serve
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 # D-Bus session bus is required for native notifications.
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+
+# --- Hardening (all compatible with systemd *user* units) -------------------
+# Runs as your user only; it can never gain privileges (no sudo, setuid, caps).
+NoNewPrivileges=yes
+UMask=0077
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+RestrictNamespaces=yes
+# Stronger filesystem sandboxing (ProtectSystem/ProtectHome/PrivateTmp) needs
+# mount namespaces, which unprivileged user managers may not provide. Enable on
+# systems where `systemd-run --user -p PrivateTmp=yes true` succeeds:
+#PrivateTmp=yes
+#ProtectSystem=strict
+#ReadWritePaths=%h/.local/share/phone-bridge %h/.config/phone-bridge
 
 [Install]
 WantedBy=default.target

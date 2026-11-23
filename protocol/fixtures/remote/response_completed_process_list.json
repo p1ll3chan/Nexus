@@ -1,0 +1,56 @@
+{
+  "name": "response_completed_process_list",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.response",
+    "v": 1,
+    "request_id": "req_0000000000000001",
+    "operation": "process.list",
+    "status": "completed",
+    "truncated": false,
+    "started_at": 1795440001.1,
+    "finished_at": 1795440001.2,
+    "result": {
+      "total": 2,
+      "offset": 0,
+      "limit": 25,
+      "sort_by": "memory",
+      "order": "desc",
+      "inaccessible": 0,
+      "collected_at": 1795440001.2,
+      "truncated": false,
+      "returned": 2,
+      "items": [
+        {
+          "pid": 1234,
+          "name": "firefox",
+          "state": "sleeping",
+          "own": true,
+          "rss_bytes": 524288000,
+          "mem_percent": 3.2,
+          "cpu_time_seconds": 120.5,
+          "avg_cpu_percent": 4.1,
+          "threads": 80,
+          "start_time": 1795430000.0,
+          "start_ticks": 98765,
+          "runtime_seconds": 10001.2
+        },
+        {
+          "pid": 1,
+          "name": "systemd",
+          "state": "sleeping",
+          "own": false,
+          "rss_bytes": 12000000,
+          "mem_percent": 0.1,
+          "cpu_time_seconds": 3.0,
+          "avg_cpu_percent": null,
+          "threads": 1,
+          "start_time": null,
+          "start_ticks": 5,
+          "runtime_seconds": null
+        }
+      ]
+    }
+  }
+}

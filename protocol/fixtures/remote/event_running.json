@@ -1,0 +1,13 @@
+{
+  "name": "event_running",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.event",
+    "v": 1,
+    "request_id": "a1b2c3d4e5f60718",
+    "state": "running",
+    "ts": 1795440000.7,
+    "operation": "system.status"
+  }
+}

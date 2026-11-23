@@ -1,5 +1,7 @@
 package com.phonebridge.app.bridge
 
+import com.phonebridge.app.data.DeviceCredential
+import com.phonebridge.app.remote.RemoteProtocol
 import org.json.JSONObject
 import java.util.UUID
 
@@ -21,13 +23,23 @@ object MessageProtocol {
     private const val TYPE_ACK = "ack"
     private const val TYPE_ERROR = "error"
 
-    fun hello(device: String, token: String): String = JSONObject()
-        .put("type", TYPE_HELLO)
-        .put("device", device)
-        .put("token", token)
-        .put("version", VERSION)
-        .put("platform", "android")
-        .toString()
+    /**
+     * Hello frame. With a Nexus device credential the shared token is NOT sent:
+     * the server never falls back from a failed device credential to the token.
+     */
+    fun hello(device: String, token: String, credential: DeviceCredential? = null): String =
+        JSONObject().apply {
+            put("type", TYPE_HELLO)
+            put("device", device)
+            put("version", VERSION)
+            put("platform", "android")
+            if (credential != null) {
+                put("device_id", credential.deviceId)
+                put("device_secret", credential.secret)
+            } else {
+                put("token", token)
+            }
+        }.toString()
 
     fun notification(event: NotificationEvent): String = JSONObject()
         .put("type", TYPE_NOTIFICATION)
@@ -78,10 +90,14 @@ object MessageProtocol {
     fun parse(raw: String): InboundFrame {
         val json = runCatching { JSONObject(raw) }
             .getOrElse { return InboundFrame.Unknown("invalid", raw) }
-        return when (json.optString("type")) {
+        val type = json.optString("type")
+        if (RemoteProtocol.isRemoteType(type)) return InboundFrame.Remote(type, raw)
+        return when (type) {
             TYPE_HELLO_ACK -> InboundFrame.HelloAck(
                 server = json.optString("server"),
                 version = json.optInt("version", VERSION),
+                auth = json.optString("auth", "token"),
+                deviceId = json.optString("device_id"),
             )
             TYPE_ACK -> InboundFrame.Ack(
                 ref = json.optString("ref"),
@@ -124,8 +140,13 @@ enum class CallState(val wire: String) {
 sealed interface OutboundEvent {
     fun encode(): String
 
-    data class Hello(val device: String, val token: String) : OutboundEvent {
-        override fun encode() = MessageProtocol.hello(device, token)
+    data class Hello(
+        val device: String,
+        val token: String,
+        val credential: DeviceCredential? = null,
+    ) : OutboundEvent {
+        override fun encode() = MessageProtocol.hello(device, token, credential)
+        override fun toString() = "Hello(device=$device, auth=${if (credential != null) "device" else "token"})"
     }
 
     data class Notification(val event: NotificationEvent) : OutboundEvent {
@@ -183,11 +204,17 @@ data class LocationEvent(
 )
 
 sealed interface InboundFrame {
-    data class HelloAck(val server: String, val version: Int) : InboundFrame
+    data class HelloAck(
+        val server: String,
+        val version: Int,
+        val auth: String = "token",
+        val deviceId: String = "",
+    ) : InboundFrame
     data class Ack(val ref: String, val ok: Boolean, val detail: String) : InboundFrame
     data class Locate(val id: String, val timestamp: Double) : InboundFrame
     data class Ping(val timestamp: Double) : InboundFrame
     data class Pong(val timestamp: Double) : InboundFrame
     data class Error(val code: String, val message: String) : InboundFrame
+    data class Remote(val type: String, val raw: String) : InboundFrame
     data class Unknown(val type: String, val raw: String) : InboundFrame
 }

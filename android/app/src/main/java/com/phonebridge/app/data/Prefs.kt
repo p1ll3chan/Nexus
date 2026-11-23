@@ -7,6 +7,8 @@ data class BridgeSettings(
     val host: String = "",
     val port: Int = DEFAULT_PORT,
     val token: String = "",
+    /** Nexus device credential `dev_<id>.<secret>`; preferred over [token]. */
+    val deviceCredential: String = "",
     val deviceName: String = defaultDeviceName(),
     val notificationsEnabled: Boolean = true,
     val socialOnlyNotifications: Boolean = true,
@@ -16,7 +18,15 @@ data class BridgeSettings(
     val startOnBoot: Boolean = false,
 ) {
     fun isConfigured(): Boolean =
-        host.isNotBlank() && port in 1..65535 && token.isNotBlank()
+        host.isNotBlank() && port in 1..65535 && (token.isNotBlank() || credential() != null)
+
+    /** Parsed device credential, or null when absent/malformed. */
+    fun credential(): DeviceCredential? =
+        deviceCredential.takeIf { it.isNotBlank() }?.let { DeviceCredential.parse(it) }
+
+    override fun toString(): String =
+        "BridgeSettings(host=$host, port=$port, device=$deviceName, token=****, credential=" +
+            (credential()?.deviceId ?: "none") + ")"
 
     fun webSocketUrl(): String {
         var value = host.trim()
@@ -46,6 +56,7 @@ object Prefs {
     private const val KEY_HOST = "host"
     private const val KEY_PORT = "port"
     private const val KEY_TOKEN = "token"
+    private const val KEY_CREDENTIAL_ENC = "device_credential_enc"
     private const val KEY_DEVICE = "device_name"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_SOCIAL_ONLY = "social_only_notifications"
@@ -60,6 +71,7 @@ object Prefs {
             host = prefs.getString(KEY_HOST, "") ?: "",
             port = prefs.getInt(KEY_PORT, BridgeSettings.DEFAULT_PORT),
             token = prefs.getString(KEY_TOKEN, "") ?: "",
+            deviceCredential = SecretStore.decrypt(prefs.getString(KEY_CREDENTIAL_ENC, "") ?: ""),
             deviceName = prefs.getString(KEY_DEVICE, BridgeSettings.defaultDeviceName())
                 ?: BridgeSettings.defaultDeviceName(),
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, true),
@@ -79,6 +91,7 @@ object Prefs {
             .putString(KEY_HOST, settings.host)
             .putInt(KEY_PORT, settings.port)
             .putString(KEY_TOKEN, settings.token)
+            .putString(KEY_CREDENTIAL_ENC, SecretStore.encrypt(settings.deviceCredential.trim()))
             .putString(KEY_DEVICE, settings.deviceName)
             .putBoolean(KEY_NOTIFICATIONS, settings.notificationsEnabled)
             .putBoolean(KEY_SOCIAL_ONLY, settings.socialOnlyNotifications)

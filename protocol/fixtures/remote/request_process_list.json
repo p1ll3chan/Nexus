@@ -1,0 +1,19 @@
+{
+  "name": "request_process_list",
+  "direction": "android_to_linux",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.request",
+    "v": 1,
+    "request_id": "req_0000000000000001",
+    "operation": "process.list",
+    "params": {
+      "limit": 25,
+      "offset": 0,
+      "sort_by": "memory",
+      "order": "desc",
+      "own_only": false
+    },
+    "ts": 1795440001.0
+  }
+}

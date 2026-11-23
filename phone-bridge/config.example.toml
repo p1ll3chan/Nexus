@@ -1,10 +1,14 @@
 # phone-bridge configuration
 # Copy to ~/.config/phone-bridge/config.toml and edit the token.
 
+# Bind to your Tailscale IP (see `tailscale ip -4`) so the agent is not reachable
+# on other interfaces. 0.0.0.0 listens everywhere.
 host = "0.0.0.0"
 port = 8765
 
-# Shared secret. Generate one with: phone-bridge token
+# Legacy shared secret for notifications/calls/GPS. Generate one with:
+#     phone-bridge token
+# The placeholder below is rejected at startup on purpose.
 token = "change-me"
 
 # Name this laptop advertises to the phone.
@@ -72,6 +76,26 @@ enabled_devices = []
 heartbeat_interval = 25.0
 heartbeat_timeout = 70.0
 log_level = "INFO"
+
+# --- Nexus Remote -----------------------------------------------------------
+# Read-only Linux diagnostics (system status, process list/inspect) for devices
+# paired with `phone-bridge remote pair <name> --grant remote.read`.
+remote_enabled = true
+remote_db_path = "~/.local/share/phone-bridge/nexus.db"
+# Seconds before an authenticated device session must reconnect.
+remote_session_max_age = 43200
+# Seconds a Linux-side approval prompt stays valid (10-600).
+remote_approval_ttl = 60
+audit_retention_days = 90
+# Shared-token login never grants remote access. Set legacy_token_auth = false
+# (or an expiry date) once every phone uses a paired device credential.
+legacy_token_auth = true
+legacy_token_expires = ""
+
+# Filesystems reported by system.status, by label (paths are never sent).
+[remote_disks]
+root = "/"
+home = "~"
 
 [icon_map]
 whatsapp = "whatsapp"

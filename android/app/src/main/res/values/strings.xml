@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PhoneBridge</string>
+    <string name="app_name">Nexus</string>
     <string name="listener_label">PhoneBridge notifications</string>
-    <string name="tagline">Forward social/communication notifications, calls, and live GPS location to your Linux laptop over Tailscale.</string>
+    <string name="tagline">Forward notifications, calls and GPS to your Linux computer over Tailscale, and check on it remotely. (Formerly PhoneBridge.)</string>
 
     <string name="channel_bridge_name">Connection status</string>
     <string name="channel_bridge_description">Shows whether PhoneBridge is connected to the laptop.</string>
-    <string name="notification_title">PhoneBridge</string>
+    <string name="notification_title">Nexus</string>
 
     <string name="action_stop">Stop</string>
     <string name="action_save_connect">Save &amp; connect</string>
@@ -25,7 +25,9 @@
 
     <string name="hint_host">Server address (Tailscale IP or hostname)</string>
     <string name="hint_port">Port</string>
-    <string name="hint_token">Shared secret</string>
+    <string name="hint_token">Shared secret (legacy)</string>
+    <string name="hint_credential">Nexus device credential (from: phone-bridge remote pair)</string>
+    <string name="error_bad_credential">The device credential should look like dev_0123456789abcdef.xxxxxxxx…</string>
     <string name="hint_device">This device name</string>
     <string name="hint_location_interval">GPS update interval (seconds)</string>
 
@@ -39,7 +41,52 @@
     <string name="stats_format">Notifications %1$d (skipped %2$d) \u2022 Calls %3$d \u2022 GPS %4$d \u2022 Reconnects %5$d</string>
 
     <string name="permission_denied">Permission denied; some features may not work.</string>
-    <string name="error_incomplete">Enter the server address and shared secret first.</string>
+    <string name="error_incomplete">Enter the server address and a device credential (or legacy shared secret) first.</string>
     <string name="saved_connecting">Settings saved, connecting\u2026</string>
     <string name="test_sent">Test events sent.</string>
+
+    <!-- Nexus Remote -->
+    <string name="action_open_remote">Open Nexus Remote</string>
+    <string name="remote_title">Nexus Remote</string>
+    <string name="remote_permission_explainer">Read-only: this phone can view status and processes on the paired Linux computer. It cannot run commands, change files or stop processes. Access is granted, and can be revoked at any time, on the Linux computer.</string>
+    <string name="remote_identity">This device: %1$s\nPermissions: %2$s</string>
+    <string name="remote_identity_legacy">Signed in with the legacy shared token.</string>
+    <string name="remote_identity_unknown">Remote status unknown.</string>
+    <string name="remote_no_permissions">none</string>
+    <string name="remote_banner_legacy">Remote needs a paired device. On Linux run `phone-bridge remote pair &lt;name&gt; --grant remote.read`, then paste the credential in Settings.</string>
+    <string name="remote_banner_no_ops">Paired, but no remote permission is granted. On Linux run `phone-bridge remote grant &lt;device-id&gt; remote.read`.</string>
+    <string name="remote_banner_unsupported">This Linux agent does not support Nexus Remote. Update phone-bridge.</string>
+    <string name="remote_banner_offline">Not connected. Start the bridge on the main screen.</string>
+    <string name="remote_status_title">System status</string>
+    <string name="remote_status_loading">Waiting for status…</string>
+    <string name="remote_status_updated">Updated %1$s</string>
+    <string name="remote_status_stale">Stale: last update %1$s</string>
+    <string name="remote_status_error_stale">%1$s Showing data from %2$s.</string>
+    <string name="remote_cpu">CPU %1$s of %2$d cores · load %3$s</string>
+    <string name="remote_memory">Memory %1$s of %2$s (%3$s)</string>
+    <string name="remote_disk">Disk %1$s: %2$s of %3$s (%4$s)</string>
+    <string name="remote_no_disks">No disks reported</string>
+    <string name="remote_uptime">Uptime %1$s · %2$s · kernel %3$s</string>
+    <string name="remote_processes_title">Processes</string>
+    <string name="remote_sort_label">Sort processes by</string>
+    <string name="remote_refresh">Refresh</string>
+    <string name="remote_own_only">Only my processes</string>
+    <string name="remote_load_more">Load more</string>
+    <string name="remote_loading">Loading…</string>
+    <string name="remote_no_processes">No processes to show.</string>
+    <string name="remote_process_count">Showing %1$d of %2$d</string>
+    <string name="remote_truncated">truncated by size limit</string>
+    <string name="remote_inaccessible">%1$d not readable</string>
+    <string name="remote_owner_you">yours</string>
+    <string name="remote_owner_other">other user</string>
+    <string name="remote_process_meta">PID %1$d · %2$s · CPU %3$s · %4$s · %5$s</string>
+    <string name="remote_process_a11y">%1$s, process %2$d, using %3$s of memory. Double tap for details.</string>
+    <string name="remote_detail_title">%1$s (PID %2$d)</string>
+    <string name="remote_detail_body">PID %1$d · parent %2$d\nState: %3$s · owner: %4$s\nMemory: %5$s resident, %6$s virtual (%7$s)\nCPU time: %8$s (avg %9$s)\nThreads: %10$d · nice %11$d\nRunning for %12$s</string>
+    <string-array name="remote_sort_options">
+        <item>Memory (highest first)</item>
+        <item>CPU time (highest first)</item>
+        <item>PID (lowest first)</item>
+        <item>Name (A–Z)</item>
+    </string-array>
 </resources>

@@ -11,8 +11,8 @@ android {
         applicationId = "com.phonebridge.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.3.0-alpha1"
     }
 
     buildTypes {
@@ -40,6 +40,17 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.all {
+            // Shared protocol fixtures, also tested by the Python agent.
+            it.systemProperty(
+                "nexus.fixtures",
+                rootProject.file("../protocol/fixtures/remote").absolutePath,
+            )
+        }
+    }
 }
 
 dependencies {
@@ -50,4 +61,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+
+    testImplementation("junit:junit:4.13.2")
+    // Real org.json on the JVM (Android's copy is stubbed in unit tests).
+    testImplementation("org.json:json:20240303")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }

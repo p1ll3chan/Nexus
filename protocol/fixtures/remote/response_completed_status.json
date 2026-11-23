@@ -1,0 +1,51 @@
+{
+  "name": "response_completed_status",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.response",
+    "v": 1,
+    "request_id": "a1b2c3d4e5f60718",
+    "operation": "system.status",
+    "status": "completed",
+    "truncated": false,
+    "started_at": 1795440000.7,
+    "finished_at": 1795440001.0,
+    "result": {
+      "host": "arch-laptop",
+      "os": {
+        "system": "Linux",
+        "kernel": "6.12.0"
+      },
+      "cpu": {
+        "percent": 12.5,
+        "count": 8,
+        "load": [
+          0.5,
+          0.4,
+          0.3
+        ]
+      },
+      "memory": {
+        "total_bytes": 16000000000,
+        "used_bytes": 6000000000,
+        "available_bytes": 10000000000,
+        "percent": 37.5,
+        "swap_total_bytes": 0,
+        "swap_used_bytes": 0
+      },
+      "disks": [
+        {
+          "label": "root",
+          "total_bytes": 500000000000,
+          "used_bytes": 250000000000,
+          "free_bytes": 250000000000,
+          "percent": 50.0
+        }
+      ],
+      "uptime_seconds": 3600.0,
+      "collected_at": 1795440001.0,
+      "unavailable": []
+    }
+  }
+}

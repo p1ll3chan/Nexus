@@ -210,27 +210,45 @@ def message_type(data: dict[str, Any]) -> MessageType:
 @dataclass
 class Hello:
     device: str
-    token: str
+    token: str = ""
     version: int = PROTOCOL_VERSION
     platform: str = "android"
+    # Nexus per-device credential (preferred).  When present the shared token
+    # is not used and a failed device credential never falls back to it.
+    device_id: str = ""
+    device_secret: str = ""
+
+    @property
+    def uses_device_credential(self) -> bool:
+        return bool(self.device_id)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Hello":
+        device_id = _require_str(data, "device_id", MAX_ID_LEN, required=False)
+        device_secret = _require_str(data, "device_secret", MAX_TOKEN_LEN, required=False)
+        if device_id and not device_secret:
+            raise ProtocolError("field 'device_secret' is required with 'device_id'")
         return cls(
             device=_require_str(data, "device", MAX_DEVICE_LEN),
-            token=_require_str(data, "token", MAX_TOKEN_LEN),
+            token=_require_str(data, "token", MAX_TOKEN_LEN, required=not device_id),
             version=_optional_int(data, "version", PROTOCOL_VERSION),
             platform=_require_str(data, "platform", 32, required=False) or "android",
+            device_id=device_id,
+            device_secret=device_secret,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        frame: dict[str, Any] = {
             "type": MessageType.HELLO.value,
             "device": self.device,
             "token": self.token,
             "version": self.version,
             "platform": self.platform,
         }
+        if self.device_id:
+            frame["device_id"] = self.device_id
+            frame["device_secret"] = self.device_secret
+        return frame
 
 
 @dataclass
@@ -417,13 +435,23 @@ class Pong:
         return {"type": MessageType.PONG.value, "timestamp": self.timestamp}
 
 
-def hello_ack(server: str, version: int = PROTOCOL_VERSION) -> dict[str, Any]:
-    return {
+def hello_ack(
+    server: str,
+    version: int = PROTOCOL_VERSION,
+    *,
+    auth: str = "token",
+    device_id: str = "",
+) -> dict[str, Any]:
+    frame: dict[str, Any] = {
         "type": MessageType.HELLO_ACK.value,
         "server": server,
         "version": version,
+        "auth": auth,
         "timestamp": _now(),
     }
+    if device_id:
+        frame["device_id"] = device_id
+    return frame
 
 
 def ack(ref: str = "", ok: bool = True, detail: str = "") -> dict[str, Any]:

@@ -1,0 +1,27 @@
+{
+  "name": "capabilities_available",
+  "direction": "linux_to_android",
+  "expect": "valid",
+  "frame": {
+    "type": "remote.capabilities",
+    "v": 1,
+    "available": true,
+    "server": "arch-laptop",
+    "device_id": "dev_0123456789abcdef",
+    "permissions": [
+      "remote.read"
+    ],
+    "operations": [
+      {
+        "id": "system.status",
+        "permission": "remote.read",
+        "risk": "R1",
+        "requires_approval": false,
+        "description": "CPU, memory, disk usage, load and uptime of the Linux host",
+        "timeout": 3.0,
+        "max_output_bytes": 16384,
+        "params": {}
+      }
+    ]
+  }
+}
