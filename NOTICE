@@ -1,0 +1,22 @@
+Nexus (formerly PhoneBridge)
+Copyright 2026 p1ll3chan
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components
+----------------------
+Linux agent (Python):
+  - websockets (BSD-3-Clause) - https://github.com/python-websockets/websockets
+  - dbus-python, optional (MIT) - https://gitlab.freedesktop.org/dbus/dbus-python
+
+Map dashboard (loaded by the browser from a CDN, not redistributed):
+  - Leaflet 1.9.4 (BSD-2-Clause) - https://leafletjs.com
+  - Map tiles: OpenStreetMap contributors (ODbL), CARTO basemaps
+
+Android app:
+  - AndroidX Core, AppCompat, Lifecycle, ConstraintLayout, RecyclerView (Apache-2.0)
+  - Material Components for Android (Apache-2.0)
+  - Kotlin standard library and kotlinx.coroutines (Apache-2.0)
+  - OkHttp / Okio (Apache-2.0)
+
+Test-only dependencies (not shipped): JUnit 4 (EPL-1.0), org.json (Public Domain / JSON License).

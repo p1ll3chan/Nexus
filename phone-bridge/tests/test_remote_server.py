@@ -503,6 +503,7 @@ class DashboardIsolationTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(urllib.error.HTTPError) as ctx:
                         await asyncio.to_thread(urllib.request.urlopen, f"{web.url}{path}", None, 5)
                     self.assertEqual(ctx.exception.code, 404)
+                    ctx.exception.close()
             html = await asyncio.to_thread(
                 lambda: urllib.request.urlopen(f"{web.url}/", timeout=5).read().decode()
             )
