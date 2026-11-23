@@ -36,6 +36,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".remote.RemoteActivity"
+            android:exported="false"
+            android:label="@string/remote_title"
+            android:parentActivityName=".MainActivity" />
+
         <service
             android:name=".bridge.BridgeService"
             android:exported="false"

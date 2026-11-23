@@ -55,6 +55,9 @@ class MainActivity : AppCompatActivity() {
         binding.phonePermissionButton.setOnClickListener { requestPhonePermissions() }
         binding.locationPermissionButton.setOnClickListener { requestLocationPermissions() }
         binding.testButton.setOnClickListener { sendTestNotification() }
+        binding.remoteButton.setOnClickListener {
+            startActivity(Intent(this, com.phonebridge.app.remote.RemoteActivity::class.java))
+        }
 
         observeRuntime()
     }
@@ -81,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         binding.hostInput.setText(settings.host)
         binding.portInput.setText(settings.port.toString())
         binding.tokenInput.setText(settings.token)
+        binding.credentialInput.setText(settings.deviceCredential)
         binding.deviceInput.setText(settings.deviceName)
         binding.locationIntervalInput.setText(settings.locationIntervalSeconds.toString())
         binding.notificationsSwitch.isChecked = settings.notificationsEnabled
@@ -99,6 +103,7 @@ class MainActivity : AppCompatActivity() {
             host = binding.hostInput.text?.toString()?.trim().orEmpty(),
             port = port,
             token = binding.tokenInput.text?.toString()?.trim().orEmpty(),
+            deviceCredential = binding.credentialInput.text?.toString()?.trim().orEmpty(),
             deviceName = binding.deviceInput.text?.toString()?.trim()
                 .takeUnless { it.isNullOrBlank() } ?: BridgeSettings.defaultDeviceName(),
             notificationsEnabled = binding.notificationsSwitch.isChecked,
@@ -112,6 +117,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveAndConnect() {
         val settings = readSettings()
+        if (settings.deviceCredential.isNotBlank() && settings.credential() == null) {
+            binding.credentialLayout.error = getString(R.string.error_bad_credential)
+            return
+        }
+        binding.credentialLayout.error = null
         if (!settings.isConfigured()) {
             Snackbar.make(binding.root, R.string.error_incomplete, Snackbar.LENGTH_LONG).show()
             return

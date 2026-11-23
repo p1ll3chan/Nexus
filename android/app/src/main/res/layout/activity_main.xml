@@ -34,6 +34,14 @@
             android:text="@string/state_disconnected"
             android:textAppearance="?attr/textAppearanceTitleMedium" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/remoteButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/action_open_remote" />
+
         <TextView
             android:id="@+id/statsText"
             android:layout_width="match_parent"
@@ -83,6 +91,23 @@
                 android:id="@+id/tokenInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:inputType="textPassword"
+                android:textDirection="ltr" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/credentialLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="@string/hint_credential"
+            app:endIconMode="password_toggle">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/credentialInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:importantForAutofill="no"
                 android:inputType="textPassword"
                 android:textDirection="ltr" />
         </com.google.android.material.textfield.TextInputLayout>
